@@ -1,0 +1,52 @@
+pipeline {
+    agent {
+        docker { image 'python:3.13.7-alpine3.22' }   // Python-агент
+    }
+    options {
+        skipStagesAfterUnstable()   // после UNSTABLE следующие стадии пропускаются
+    }
+    stages {
+        stage('Setup') {
+            steps {
+                sh '''
+                    python -m venv venv
+                    . venv/bin/activate
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+        stage('Build') {
+            steps {
+                sh '''
+                    . venv/bin/activate
+                    python -m py_compile sources/add2vals.py sources/calc.py
+                '''
+                stash(name: 'compiled-results', includes: 'sources/*.py*')
+            }
+        }
+        stage('Test') {
+            steps {
+                sh '''
+                    . venv/bin/activate
+                    py.test --junit-xml test-reports/results.xml sources/test_calc.py
+                '''
+            }
+            post {
+                always {
+                    junit 'test-reports/results.xml'
+                }
+            }
+        }
+        stage('Deliver') {
+            steps {
+                echo 'Собираю дистрибутив'
+            }
+            post {
+                success {
+                    // excludes: иначе в артефакты попадут тысячи .py из venv
+                    archiveArtifacts artifacts: '**/*.py', excludes: 'venv/**'
+                }
+            }
+        }
+    }
+}
